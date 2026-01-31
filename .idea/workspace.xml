@@ -5,12 +5,6 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="28512310-f56b-49ba-aa18-5ba3b64b8e3d" name="Changes" comment="Spring Initializer">
-      <change afterPath="$PROJECT_DIR$/src/main/java/com/team/GroundTruth/entity/Hazard/Hazard.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/java/com/team/GroundTruth/entity/Hazard/Severity.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/java/com/team/GroundTruth/entity/Hazard/Type.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/java/com/team/GroundTruth/entity/HazardReport/HazardReport.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/java/com/team/GroundTruth/entity/User/User.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/java/com/team/GroundTruth/repository/Repository.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -53,12 +47,12 @@
     &quot;assignee&quot;: &quot;Aethoen&quot;
   }
 }</component>
-  <component name="GithubPullRequestsUISettings"><![CDATA[{
-  "selectedUrlAndAccountId": {
-    "url": "https://github.com/AndyDo0942/GroundTruth.git",
-    "accountId": "fff04b11-92e8-4951-9cdb-78f48f60fa78"
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/AndyDo0942/GroundTruth.git&quot;,
+    &quot;accountId&quot;: &quot;fff04b11-92e8-4951-9cdb-78f48f60fa78&quot;
   }
-}]]></component>
+}</component>
   <component name="McpProjectServerCommands">
     <commands />
     <urls />
@@ -73,15 +67,16 @@
   </component>
   <component name="PropertiesComponent"><![CDATA[{
   "keyToString": {
+    "ASKED_SHARE_PROJECT_CONFIGURATION_FILES": "true",
     "ModuleVcsDetector.initialDetectionPerformed": "true",
     "RunOnceActivity.MCP Project settings loaded": "true",
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.git.unshallow": "true",
     "RunOnceActivity.typescript.service.memoryLimit.init": "true",
-    "SHARE_PROJECT_CONFIGURATION_FILES": "true",
     "git-widget-placeholder": "main",
     "ignore.virus.scanning.warn.message": "true",
     "kotlin-language-version-configured": "true",
+    "last_opened_file_path": "/Users/andydo/CS/GroundTruth",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
@@ -122,7 +117,9 @@
       <option name="presentableId" value="Default" />
       <updated>1769885310720</updated>
       <workItem from="1769885311886" duration="2502000" />
-      <workItem from="1769889944098" duration="6000" />
+      <workItem from="1769889944098" duration="246000" />
+      <workItem from="1769890194698" duration="1000" />
+      <workItem from="1769890250390" duration="8000" />
     </task>
     <task id="LOCAL-00001" summary="project structure">
       <option name="closed" value="true" />
@@ -132,7 +129,15 @@
       <option name="project" value="LOCAL" />
       <updated>1769886160147</updated>
     </task>
-    <option name="localTasksCounter" value="2" />
+    <task id="LOCAL-00002" summary="Spring Initializer">
+      <option name="closed" value="true" />
+      <created>1769889955435</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1769889955435</updated>
+    </task>
+    <option name="localTasksCounter" value="3" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -140,7 +145,8 @@
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="project structure" />
-    <option name="LAST_COMMIT_MESSAGE" value="project structure" />
+    <MESSAGE value="Spring Initializer" />
+    <option name="LAST_COMMIT_MESSAGE" value="Spring Initializer" />
   </component>
   <component name="XSLT-Support.FileAssociations.UIState">
     <expand />

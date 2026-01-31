@@ -25,4 +25,24 @@ public interface EdgeRepository extends JpaRepository<EdgeEntity, Long> {
 			  AND target IN (:nodeIds)
 			""", nativeQuery = true)
 	List<EdgeEntity> loadSubgraphEdges(@Param("nodeIds") Collection<Long> nodeIds);
+
+	/**
+	 * Loads edges whose source and target are within the supplied node id set
+	 * and match the requested travel mode.
+	 *
+	 * @param nodeIds node ids defining the subgraph
+	 * @param mode travel mode identifier
+	 * @return matching directed edges
+	 */
+	@Query(value = """
+			SELECT *
+			FROM edges
+			WHERE source IN (:nodeIds)
+			  AND target IN (:nodeIds)
+			  AND mode = :mode
+			""", nativeQuery = true)
+	List<EdgeEntity> loadSubgraphEdgesByMode(
+			@Param("nodeIds") Collection<Long> nodeIds,
+			@Param("mode") String mode
+	);
 }
