@@ -1,5 +1,13 @@
-ultralyticsplus
 fastapi
 uvicorn[standard]
+python-multipart
+opencv-python
 pillow
+numpy
 torch
+torchvision
+torchaudio
+ultralyticsplus
+transformers
+accelerate
+timm

@@ -18,6 +18,10 @@ class DepthEstimator:
     def get_depth(self, image_path):
         raw_img = Image.open(image_path)
         result = self.pipe(raw_img)
-        # Predicted depth is in meters
-        depth_map = result["predicted_depth"].numpy()
+        
+        # 1. Access the tensor
+        # 2. .squeeze() removes extra dimensions (e.g., [1, H, W] -> [H, W])
+        # 3. .cpu() moves it from GPU to RAM so numpy can read it
+        depth_map = result["predicted_depth"].squeeze().cpu().numpy()
+        
         return depth_map
