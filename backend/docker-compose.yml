@@ -1,7 +1,7 @@
 services:
   postgres:
     container_name: postgres-sql-wac
-    image: postgres
+    image: postgis/postgis:15-3.4
     environment:
       POSTGRES_USER: username
       POSTGRES_PASSWORD: password

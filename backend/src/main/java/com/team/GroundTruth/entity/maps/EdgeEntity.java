@@ -36,6 +36,9 @@ public class EdgeEntity {
 	@Column(name = "cost_s", nullable = false)
 	private double costSeconds;
 
+	@Column(name = "mode", nullable = false)
+	private String mode;
+
 	@JdbcTypeCode(SqlTypes.JSON)
 	@Column(name = "attrs", nullable = false, columnDefinition = "jsonb")
 	private String attrs;
@@ -114,6 +117,15 @@ public class EdgeEntity {
 	 */
 	public double getCostSeconds() {
 		return costSeconds;
+	}
+
+	/**
+	 * Returns the travel mode identifier for the edge.
+	 *
+	 * @return travel mode identifier
+	 */
+	public String getMode() {
+		return mode;
 	}
 
 	/**
