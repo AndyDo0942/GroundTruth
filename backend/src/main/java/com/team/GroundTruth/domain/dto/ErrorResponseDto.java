@@ -1,4 +1,4 @@
-package com.team.GroundTruth.domain.dto.user;
+package com.team.GroundTruth.domain.dto;
 
 public record ErrorResponseDto(String error) {
 }

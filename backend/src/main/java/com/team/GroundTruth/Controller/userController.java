@@ -1,4 +1,4 @@
-package com.team.GroundTruth.Controller;
+package com.team.GroundTruth.controller;
 
 
 import com.team.GroundTruth.domain.UserRequest;
