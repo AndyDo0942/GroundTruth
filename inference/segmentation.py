@@ -40,12 +40,3 @@ class PotholeDetector:
         if show:
             render.show()
         return render
-
-base_dir = os.path.dirname(__file__)
-img_path = os.path.join(base_dir, "input", "pothole4.jpg")
-
-detector = PotholeDetector()
-result = detector.detect(img_path)
-
-print(f"Detected {len(result.boxes)} potholes.")
-detector.visualize(img_path, result)
