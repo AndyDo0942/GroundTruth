@@ -32,6 +32,10 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class RoutingServiceImpl implements RoutingService {
 
+	private static final double EARTH_RADIUS_METERS = 6_371_000.0;
+	private static final double DEFAULT_RADIUS_MULTIPLIER = 1.2;
+	private static final double MIN_RADIUS_METERS = 2_000.0;
+
 	private final NodeRepository nodeRepository;
 	private final EdgeRepository edgeRepository;
 	private final EdgeCostOverlayRepository edgeCostOverlayRepository;
@@ -86,6 +90,53 @@ public class RoutingServiceImpl implements RoutingService {
 			return new RouteResult(List.of(startNodeId), List.of(), 0.0, 0.0);
 		}
 
+		double baseRadius = radiusMeters > 0.0 ? radiusMeters : defaultRadiusMeters(start, end);
+		double[] attempts = new double[]{baseRadius, baseRadius * 2.0, baseRadius * 4.0};
+		NoRouteFoundException last = null;
+		for (double radius : attempts) {
+			try {
+				return routeWithRadius(start, end, startNode, endNode, radius, mode);
+			} catch (NoRouteFoundException ex) {
+				last = ex;
+			}
+		}
+		throw last == null
+				? new NoRouteFoundException("No route found between start and end coordinates.")
+				: last;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public RouteResult routeWalking(Location start, Location end, double radiusMeters) {
+		return route(start, end, radiusMeters, TravelMode.WALK);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public RouteResult routeDriving(Location start, Location end, double radiusMeters) {
+		return route(start, end, radiusMeters, TravelMode.DRIVE);
+	}
+
+	private NodeCoord toCoord(NodeEntity node) {
+		Point geom = node.getGeom();
+		if (geom == null) {
+			throw new RoutingException("Node geometry is missing for node " + node.getId() + ".");
+		}
+		return new NodeCoord(geom.getY(), geom.getX());
+	}
+
+	private RouteResult routeWithRadius(
+			Location start,
+			Location end,
+			NodeEntity startNode,
+			NodeEntity endNode,
+			double radiusMeters,
+			TravelMode mode
+	) {
 		List<NodeEntity> subgraphNodes = nodeRepository.loadSubgraphNodes(
 				start.lat(),
 				start.lon(),
@@ -98,8 +149,8 @@ public class RoutingServiceImpl implements RoutingService {
 		for (NodeEntity node : subgraphNodes) {
 			nodeCoords.put(node.getId(), toCoord(node));
 		}
-		nodeCoords.putIfAbsent(startNodeId, toCoord(startNode));
-		nodeCoords.putIfAbsent(endNodeId, toCoord(endNode));
+		nodeCoords.putIfAbsent(startNode.getId(), toCoord(startNode));
+		nodeCoords.putIfAbsent(endNode.getId(), toCoord(endNode));
 
 		long[] nodeIds = nodeCoords.keySet().stream().mapToLong(Long::longValue).toArray();
 		List<EdgeEntity> subgraphEdges = edgeRepository.loadSubgraphEdgesByMode(nodeIds, mode.dbValue());
@@ -128,31 +179,7 @@ public class RoutingServiceImpl implements RoutingService {
 			throw new NoRouteFoundException("No edges available for mode " + mode + ".");
 		}
 
-		return aStarRouter.route(startNodeId, endNodeId, nodeCoords, outgoingBySource, edgeById);
-	}
-
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	public RouteResult routeWalking(Location start, Location end, double radiusMeters) {
-		return route(start, end, radiusMeters, TravelMode.WALK);
-	}
-
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	public RouteResult routeDriving(Location start, Location end, double radiusMeters) {
-		return route(start, end, radiusMeters, TravelMode.DRIVE);
-	}
-
-	private NodeCoord toCoord(NodeEntity node) {
-		Point geom = node.getGeom();
-		if (geom == null) {
-			throw new RoutingException("Node geometry is missing for node " + node.getId() + ".");
-		}
-		return new NodeCoord(geom.getY(), geom.getX());
+		return aStarRouter.route(startNode.getId(), endNode.getId(), nodeCoords, outgoingBySource, edgeById);
 	}
 
 	private Map<Long, OverlayAccumulator> loadOverlays(List<EdgeEntity> edges, TravelMode mode) {
@@ -168,6 +195,25 @@ public class RoutingServiceImpl implements RoutingService {
 						.add(overlay.getCostMultiplier(), overlay.getCostDeltaSeconds()));
 		return overlayByEdgeId;
 	}
+
+	private double defaultRadiusMeters(Location start, Location end) {
+		double distance = haversineMeters(start.lat(), start.lon(), end.lat(), end.lon());
+		return Math.max(MIN_RADIUS_METERS, distance * DEFAULT_RADIUS_MULTIPLIER);
+	}
+
+	private double haversineMeters(double lat1, double lon1, double lat2, double lon2) {
+		double radLat1 = Math.toRadians(lat1);
+		double radLat2 = Math.toRadians(lat2);
+		double dLat = radLat2 - radLat1;
+		double dLon = Math.toRadians(lon2 - lon1);
+
+		double sinLat = Math.sin(dLat / 2.0);
+		double sinLon = Math.sin(dLon / 2.0);
+		double h = sinLat * sinLat + Math.cos(radLat1) * Math.cos(radLat2) * sinLon * sinLon;
+		double c = 2.0 * Math.atan2(Math.sqrt(h), Math.sqrt(1.0 - h));
+		return EARTH_RADIUS_METERS * c;
+	}
+
 
 	private static final class OverlayAccumulator {
 		private double multiplier = 1.0;
