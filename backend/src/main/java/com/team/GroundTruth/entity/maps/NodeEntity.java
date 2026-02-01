@@ -6,6 +6,8 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.locationtech.jts.geom.Point;
 
 /**
@@ -20,6 +22,7 @@ public class NodeEntity {
 	private Long id;
 
 	@Column(name = "geom", nullable = false, columnDefinition = "geometry(Point,4326)")
+	@JdbcTypeCode(SqlTypes.GEOMETRY)
 	private Point geom;
 
 	protected NodeEntity() {

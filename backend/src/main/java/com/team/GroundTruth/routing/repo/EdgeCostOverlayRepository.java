@@ -2,7 +2,6 @@ package com.team.GroundTruth.routing.repo;
 
 import com.team.GroundTruth.entity.maps.EdgeCostOverlayEntity;
 import java.time.OffsetDateTime;
-import java.util.Collection;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -24,13 +23,13 @@ public interface EdgeCostOverlayRepository extends JpaRepository<EdgeCostOverlay
 	@Query(value = """
 			SELECT *
 			FROM edge_cost_overlays
-			WHERE edge_id IN (:edgeIds)
+			WHERE edge_id = ANY(:edgeIds)
 			  AND mode = :mode
 			  AND (valid_from IS NULL OR valid_from <= :asOf)
 			  AND (valid_to IS NULL OR valid_to >= :asOf)
 			""", nativeQuery = true)
 	List<EdgeCostOverlayEntity> findActiveOverlays(
-			@Param("edgeIds") Collection<Long> edgeIds,
+			@Param("edgeIds") long[] edgeIds,
 			@Param("mode") String mode,
 			@Param("asOf") OffsetDateTime asOf
 	);

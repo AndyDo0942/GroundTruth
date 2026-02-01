@@ -28,6 +28,7 @@ public class EdgeEntity {
 	private Long target;
 
 	@Column(name = "geom", nullable = false, columnDefinition = "geometry(LineString,4326)")
+	@JdbcTypeCode(SqlTypes.GEOMETRY)
 	private LineString geom;
 
 	@Column(name = "length_m", nullable = false)

@@ -1,7 +1,6 @@
 package com.team.GroundTruth.routing.repo;
 
 import com.team.GroundTruth.entity.maps.EdgeEntity;
-import java.util.Collection;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -21,10 +20,10 @@ public interface EdgeRepository extends JpaRepository<EdgeEntity, Long> {
 	@Query(value = """
 			SELECT *
 			FROM edges
-			WHERE source IN (:nodeIds)
-			  AND target IN (:nodeIds)
+			WHERE source = ANY(:nodeIds)
+			  AND target = ANY(:nodeIds)
 			""", nativeQuery = true)
-	List<EdgeEntity> loadSubgraphEdges(@Param("nodeIds") Collection<Long> nodeIds);
+	List<EdgeEntity> loadSubgraphEdges(@Param("nodeIds") long[] nodeIds);
 
 	/**
 	 * Loads edges whose source and target are within the supplied node id set
@@ -37,12 +36,12 @@ public interface EdgeRepository extends JpaRepository<EdgeEntity, Long> {
 	@Query(value = """
 			SELECT *
 			FROM edges
-			WHERE source IN (:nodeIds)
-			  AND target IN (:nodeIds)
+			WHERE source = ANY(:nodeIds)
+			  AND target = ANY(:nodeIds)
 			  AND mode = :mode
 			""", nativeQuery = true)
 	List<EdgeEntity> loadSubgraphEdgesByMode(
-			@Param("nodeIds") Collection<Long> nodeIds,
+			@Param("nodeIds") long[] nodeIds,
 			@Param("mode") String mode
 	);
 }

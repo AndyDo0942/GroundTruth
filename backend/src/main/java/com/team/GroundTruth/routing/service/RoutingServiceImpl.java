@@ -101,7 +101,7 @@ public class RoutingServiceImpl implements RoutingService {
 		nodeCoords.putIfAbsent(startNodeId, toCoord(startNode));
 		nodeCoords.putIfAbsent(endNodeId, toCoord(endNode));
 
-		List<Long> nodeIds = new ArrayList<>(nodeCoords.keySet());
+		long[] nodeIds = nodeCoords.keySet().stream().mapToLong(Long::longValue).toArray();
 		List<EdgeEntity> subgraphEdges = edgeRepository.loadSubgraphEdgesByMode(nodeIds, mode.dbValue());
 
 		Map<Long, OverlayAccumulator> overlayByEdgeId = loadOverlays(subgraphEdges, mode);
@@ -159,7 +159,7 @@ public class RoutingServiceImpl implements RoutingService {
 		if (edges.isEmpty()) {
 			return Map.of();
 		}
-		List<Long> edgeIds = edges.stream().map(EdgeEntity::getId).toList();
+		long[] edgeIds = edges.stream().mapToLong(EdgeEntity::getId).toArray();
 		Map<Long, OverlayAccumulator> overlayByEdgeId = new HashMap<>();
 		OffsetDateTime asOf = OffsetDateTime.now(ZoneOffset.UTC);
 		edgeCostOverlayRepository.findActiveOverlays(edgeIds, mode.dbValue(), asOf)
