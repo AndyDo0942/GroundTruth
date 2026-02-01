@@ -1,0 +1,22 @@
+CREATE EXTENSION IF NOT EXISTS postgis;
+
+CREATE TABLE IF NOT EXISTS nodes (
+	id BIGSERIAL PRIMARY KEY,
+	geom GEOMETRY(Point, 4326) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_nodes_geom ON nodes USING GIST (geom);
+
+CREATE TABLE IF NOT EXISTS edges (
+	id BIGSERIAL PRIMARY KEY,
+	source BIGINT NOT NULL REFERENCES nodes(id),
+	target BIGINT NOT NULL REFERENCES nodes(id),
+	geom GEOMETRY(LineString, 4326) NOT NULL,
+	length_m DOUBLE PRECISION NOT NULL,
+	cost_s DOUBLE PRECISION NOT NULL,
+	attrs JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+
+CREATE INDEX IF NOT EXISTS idx_edges_source ON edges (source);
+CREATE INDEX IF NOT EXISTS idx_edges_target ON edges (target);
+CREATE INDEX IF NOT EXISTS idx_edges_geom ON edges USING GIST (geom);
