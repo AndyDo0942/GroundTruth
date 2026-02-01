@@ -219,6 +219,83 @@ public class WalkAccessibilityServiceImpl implements WalkAccessibilityService {
 	}
 
 	@Override
+	public int updateForPotholeHazard(UUID hazardId, String hazardLabel, double lat, double lon, double severity, boolean hasDeepPothole) {
+		HazardType hazardType = HazardType.fromLabel(hazardLabel);
+		if (hazardType != HazardType.POTHOLE) {
+			LOG.debug("Skipping non-pothole hazard: {}", hazardLabel);
+			return 0;
+		}
+
+		double radiusMeters = hazardCostConfig.getEffectRadiusMeters();
+		List<Long> nearbyEdgeIds = modifierRepository.findWalkEdgeIdsNearPoint(lon, lat, radiusMeters);
+
+		if (nearbyEdgeIds.isEmpty()) {
+			return 0;
+		}
+
+		long[] edgeIds = nearbyEdgeIds.stream().mapToLong(Long::longValue).toArray();
+		Map<Long, EdgeEntity> edgesById = edgeRepository.findAllById(nearbyEdgeIds)
+				.stream().collect(Collectors.toMap(EdgeEntity::getId, e -> e));
+
+		Map<Long, WalkAccessibilityEdgeCostEntity> existingCosts = costRepository.findByEdgeIds(edgeIds).stream()
+				.collect(Collectors.toMap(WalkAccessibilityEdgeCostEntity::getEdgeId, c -> c));
+
+		Set<UUID> allExistingHazardIds = existingCosts.values().stream()
+				.flatMap(c -> Arrays.stream(c.getContributingHazardIds()))
+				.filter(id -> !id.equals(hazardId))
+				.collect(Collectors.toSet());
+		Map<UUID, Hazard> existingHazardsById = hazardRepository.findAllById(allExistingHazardIds).stream()
+				.collect(Collectors.toMap(Hazard::getId, h -> h));
+
+		List<WalkAccessibilityEdgeCostEntity> toSave = new ArrayList<>();
+
+		for (Long edgeId : nearbyEdgeIds) {
+			EdgeEntity edge = edgesById.get(edgeId);
+			if (edge == null) {
+				continue;
+			}
+
+			WalkAccessibilityEdgeCostEntity costEntity = existingCosts.get(edgeId);
+			List<HazardContribution> contributions = new ArrayList<>();
+
+			if (costEntity != null) {
+				for (UUID existingId : costEntity.getContributingHazardIds()) {
+					if (!existingId.equals(hazardId)) {
+						Hazard existingHazard = existingHazardsById.get(existingId);
+						if (existingHazard != null) {
+							HazardType existingType = HazardType.fromLabel(existingHazard.getLabel());
+							Double existingSeverity = existingHazard.getConfidence();
+							if (existingType != null && existingSeverity != null) {
+								contributions.add(new HazardContribution(existingId, existingType, existingSeverity));
+							}
+						}
+					}
+				}
+			}
+
+			contributions.add(new HazardContribution(hazardId, hazardType, severity, hasDeepPothole));
+
+			UUID[] hazardIds = contributions.stream()
+					.map(HazardContribution::hazardId)
+					.toArray(UUID[]::new);
+
+			double newCost = computeCost(edge.getCostSeconds(), contributions);
+
+			if (costEntity != null) {
+				costEntity.setCostSeconds(newCost);
+				costEntity.setContributingHazardIds(hazardIds);
+			} else {
+				costEntity = new WalkAccessibilityEdgeCostEntity(edgeId, newCost, hazardIds);
+			}
+			toSave.add(costEntity);
+		}
+
+		costRepository.saveAll(toSave);
+		LOG.info("Updated accessibility costs for {} edges due to pothole hazard {} (hasDeepPothole={})", toSave.size(), hazardId, hasDeepPothole);
+		return toSave.size();
+	}
+
+	@Override
 	public int removeHazard(UUID hazardId) {
 		List<WalkAccessibilityEdgeCostEntity> affectedEdges = costRepository.findByContributingHazardId(hazardId);
 
@@ -313,7 +390,8 @@ public class WalkAccessibilityServiceImpl implements WalkAccessibilityService {
 		for (HazardContribution contribution : contributions) {
 			double hazardMultiplier = hazardCostConfig.computeMultiplier(
 					contribution.hazardType(),
-					contribution.severity()
+					contribution.severity(),
+					contribution.hasDeepPothole()
 			);
 			multiplier *= hazardMultiplier;
 		}
@@ -328,8 +406,13 @@ public class WalkAccessibilityServiceImpl implements WalkAccessibilityService {
 	 * Record to track a hazard's contribution to an edge.
 	 *
 	 * @param hazardId the hazard UUID
-	 * @param hazardType the type of hazard (CRACKS, BLOCKED_SIDEWALK, etc.)
+	 * @param hazardType the type of hazard (CRACKS, BLOCKED_SIDEWALK, POTHOLE, etc.)
 	 * @param severity the severity score (0-100) from Gemini analysis
+	 * @param hasDeepPothole true if inference API found pothole deeper than 5 cm (POTHOLE only)
 	 */
-	private record HazardContribution(UUID hazardId, HazardType hazardType, double severity) {}
+	private record HazardContribution(UUID hazardId, HazardType hazardType, double severity, boolean hasDeepPothole) {
+		HazardContribution(UUID hazardId, HazardType hazardType, double severity) {
+			this(hazardId, hazardType, severity, false);
+		}
+	}
 }

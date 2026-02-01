@@ -30,6 +30,19 @@ public interface WalkAccessibilityService {
 	int updateForHazard(UUID hazardId, String hazardLabel, double lat, double lon, double severity);
 
 	/**
+	 * Recalculates costs for edges affected by a pothole hazard, using inference depth when available.
+	 *
+	 * @param hazardId the hazard UUID
+	 * @param hazardLabel the hazard type label (e.g. "pothole")
+	 * @param lat hazard latitude
+	 * @param lon hazard longitude
+	 * @param severity hazard severity (0-100) from Gemini analysis
+	 * @param hasDeepPothole true if inference API found any pothole deeper than 5 cm (applies 1.5x multiplier)
+	 * @return number of edges updated
+	 */
+	int updateForPotholeHazard(UUID hazardId, String hazardLabel, double lat, double lon, double severity, boolean hasDeepPothole);
+
+	/**
 	 * Removes a hazard's contribution from affected edges and recalculates costs.
 	 *
 	 * @param hazardId the hazard UUID to remove

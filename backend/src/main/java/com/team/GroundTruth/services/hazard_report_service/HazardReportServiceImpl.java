@@ -12,6 +12,7 @@ import com.team.GroundTruth.routing.service.WalkAccessibilityService;
 import com.team.GroundTruth.services.hazard_analysis_service.HazardAnalysisResult;
 import com.team.GroundTruth.services.hazard_analysis_service.HazardAnalysisService;
 import com.team.GroundTruth.services.hazard_analysis_service.HazardScore;
+import com.team.GroundTruth.services.pothole_inference.PotholeInferenceClient;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -42,6 +43,10 @@ public class HazardReportServiceImpl implements HazardReportService {
      * Service used to update walk accessibility edge costs when hazards change.
      */
     private final WalkAccessibilityService walkAccessibilityService;
+    /**
+     * Client for the Python inference API (pothole depth analysis).
+     */
+    private final PotholeInferenceClient potholeInferenceClient;
 
     /**
      * Creates the service with its repository dependencies.
@@ -50,17 +55,20 @@ public class HazardReportServiceImpl implements HazardReportService {
      * @param userRepository repository for user lookups
      * @param hazardAnalysisService AI service for image analysis
      * @param walkAccessibilityService service for updating edge costs
+     * @param potholeInferenceClient client for inference API (pothole depth)
      */
     public HazardReportServiceImpl(
             HazardReportRepository hazardReportRepository,
             UserRepository userRepository,
             HazardAnalysisService hazardAnalysisService,
-            WalkAccessibilityService walkAccessibilityService
+            WalkAccessibilityService walkAccessibilityService,
+            PotholeInferenceClient potholeInferenceClient
     ) {
         this.hazardReportRepository = hazardReportRepository;
         this.userRepository = userRepository;
         this.hazardAnalysisService = hazardAnalysisService;
         this.walkAccessibilityService = walkAccessibilityService;
+        this.potholeInferenceClient = potholeInferenceClient;
     }
 
     /**
@@ -83,9 +91,13 @@ public class HazardReportServiceImpl implements HazardReportService {
             HazardAnalysisResult result = hazardAnalysisService.analyzeImage(request.imageUrl());
             if (result != null && result.hazards() != null && !result.hazards().isEmpty()) {
                 List<Hazard> hazards = new ArrayList<>();
+                boolean hasPothole = false;
                 for (HazardScore score : result.hazards()) {
                     if (score == null || score.hazardType() == null) {
                         continue;
+                    }
+                    if (HazardType.fromLabel(score.hazardType()) == HazardType.POTHOLE) {
+                        hasPothole = true;
                     }
                     Hazard hazard = new Hazard();
                     hazard.setReport(savedReport);
@@ -96,8 +108,16 @@ public class HazardReportServiceImpl implements HazardReportService {
                 savedReport.setHazards(hazards);
                 savedReport = hazardReportRepository.save(savedReport);
 
-                // Update walk accessibility edge costs for accessibility hazards
-                updateAccessibilityEdgeCosts(savedReport);
+                boolean hasDeepPothole = false;
+                if (hasPothole) {
+                    try {
+                        hasDeepPothole = potholeInferenceClient.hasDeepPothole(request.imageUrl());
+                    } catch (RuntimeException e) {
+                        LOGGER.warn("Inference API call failed for report {}: {}", savedReport.getId(), e.getMessage());
+                    }
+                }
+
+                updateAccessibilityEdgeCosts(savedReport, hasDeepPothole);
             }
         } catch (RuntimeException ex) {
             LOGGER.warn("AI hazard analysis failed for report {}", savedReport.getId(), ex);
@@ -146,34 +166,54 @@ public class HazardReportServiceImpl implements HazardReportService {
     }
 
     /**
-     * Updates walk accessibility edge costs for any accessibility hazards in the report.
-     * Called after hazards are created/analyzed.
+     * Updates walk accessibility edge costs for hazards on the report (accessibility + potholes).
      *
-     * @param report the hazard report with hazards
+     * @param report the saved hazard report with hazards
+     * @param hasDeepPothole true if inference API found any pothole deeper than 5 cm (applies 1.5x for potholes)
      */
-    private void updateAccessibilityEdgeCosts(HazardReport report) {
+    private void updateAccessibilityEdgeCosts(HazardReport report, boolean hasDeepPothole) {
+        if (report.getHazards() == null || report.getHazards().isEmpty()) {
+            return;
+        }
         if (report.getLatitude() == null || report.getLongitude() == null) {
             LOGGER.debug("Skipping edge cost update - report {} has no location", report.getId());
             return;
         }
 
+        double lat = report.getLatitude().doubleValue();
+        double lon = report.getLongitude().doubleValue();
+
         for (Hazard hazard : report.getHazards()) {
             HazardType hazardType = HazardType.fromLabel(hazard.getLabel());
-            if (hazardType != null && hazardType.isAccessibilityHazard()) {
-                try {
-                    double severity = hazard.getConfidence() != null ? hazard.getConfidence() : 50.0;
+            if (hazardType == null) {
+                continue;
+            }
+            double severity = hazard.getConfidence() != null ? hazard.getConfidence() : 50.0;
+            try {
+                if (hazardType.isAccessibilityHazard()) {
                     int updated = walkAccessibilityService.updateForHazard(
                             hazard.getId(),
                             hazard.getLabel(),
-                            report.getLatitude().doubleValue(),
-                            report.getLongitude().doubleValue(),
+                            lat,
+                            lon,
                             severity
                     );
                     LOGGER.info("Updated {} edge costs for hazard {} ({})",
                             updated, hazard.getId(), hazard.getLabel());
-                } catch (RuntimeException ex) {
-                    LOGGER.warn("Failed to update edge costs for hazard {}", hazard.getId(), ex);
+                } else if (hazardType == HazardType.POTHOLE) {
+                    int updated = walkAccessibilityService.updateForPotholeHazard(
+                            hazard.getId(),
+                            hazard.getLabel(),
+                            lat,
+                            lon,
+                            severity,
+                            hasDeepPothole
+                    );
+                    LOGGER.info("Updated {} edge costs for pothole hazard {} (hasDeepPothole={})",
+                            updated, hazard.getId(), hasDeepPothole);
                 }
+            } catch (RuntimeException ex) {
+                LOGGER.warn("Failed to update edge costs for hazard {}", hazard.getId(), ex);
             }
         }
     }
@@ -184,9 +224,12 @@ public class HazardReportServiceImpl implements HazardReportService {
      * @param report the hazard report being deleted
      */
     private void removeAccessibilityEdgeCosts(HazardReport report) {
+        if (report.getHazards() == null) {
+            return;
+        }
         for (Hazard hazard : report.getHazards()) {
             HazardType hazardType = HazardType.fromLabel(hazard.getLabel());
-            if (hazardType != null && hazardType.isAccessibilityHazard()) {
+            if (hazardType != null && (hazardType.isAccessibilityHazard() || hazardType == HazardType.POTHOLE)) {
                 try {
                     int updated = walkAccessibilityService.removeHazard(hazard.getId());
                     LOGGER.info("Removed hazard {} from {} edge costs", hazard.getId(), updated);
