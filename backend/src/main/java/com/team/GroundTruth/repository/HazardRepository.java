@@ -41,4 +41,59 @@ public interface HazardRepository extends JpaRepository<Hazard, UUID> {
 			AND r.longitude IS NOT NULL
 			""")
 	List<Hazard> findAccessibilityHazardsWithLocation();
+
+	/**
+	 * Finds accessibility hazards within a bounding box with severity above threshold.
+	 *
+	 * @param minLat minimum latitude
+	 * @param maxLat maximum latitude
+	 * @param minLon minimum longitude
+	 * @param maxLon maximum longitude
+	 * @param minSeverity minimum severity threshold (0-100)
+	 * @return hazards within bounds above threshold
+	 */
+	@Query("""
+			SELECT h FROM Hazard h
+			JOIN FETCH h.report r
+			WHERE LOWER(h.label) IN ('cracks', 'blocked sidewalk')
+			AND r.latitude IS NOT NULL
+			AND r.longitude IS NOT NULL
+			AND r.latitude BETWEEN :minLat AND :maxLat
+			AND r.longitude BETWEEN :minLon AND :maxLon
+			AND (h.confidence IS NULL OR h.confidence >= :minSeverity)
+			""")
+	List<Hazard> findAccessibilityHazardsInBounds(
+			@Param("minLat") float minLat,
+			@Param("maxLat") float maxLat,
+			@Param("minLon") float minLon,
+			@Param("maxLon") float maxLon,
+			@Param("minSeverity") double minSeverity
+	);
+
+	/**
+	 * Finds all hazards within a bounding box with severity above threshold.
+	 *
+	 * @param minLat minimum latitude
+	 * @param maxLat maximum latitude
+	 * @param minLon minimum longitude
+	 * @param maxLon maximum longitude
+	 * @param minSeverity minimum severity threshold (0-100)
+	 * @return all hazards within bounds above threshold
+	 */
+	@Query("""
+			SELECT h FROM Hazard h
+			JOIN FETCH h.report r
+			WHERE r.latitude IS NOT NULL
+			AND r.longitude IS NOT NULL
+			AND r.latitude BETWEEN :minLat AND :maxLat
+			AND r.longitude BETWEEN :minLon AND :maxLon
+			AND (h.confidence IS NULL OR h.confidence >= :minSeverity)
+			""")
+	List<Hazard> findHazardsInBounds(
+			@Param("minLat") float minLat,
+			@Param("maxLat") float maxLat,
+			@Param("minLon") float minLon,
+			@Param("maxLon") float maxLon,
+			@Param("minSeverity") double minSeverity
+	);
 }
