@@ -1,12 +1,13 @@
 package com.team.GroundTruth.domain.entity.HazardReport;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.team.GroundTruth.domain.entity.Hazard.Hazard;
 import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /**
  * JPA entity representing a user-submitted hazard report with an image.
@@ -24,8 +25,8 @@ public class HazardReport {
     /**
      * Raw image bytes for the report.
      */
-    @Lob
-    @Column(name = "image_bytes")
+    @JdbcTypeCode(SqlTypes.VARBINARY)
+    @Column(name = "image_bytes", columnDefinition = "bytea")
     private byte[] imageBytes;
 
     /**

@@ -17,11 +17,13 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Default implementation of {@link HazardReportService}.
  */
 @Service
+@Transactional
 public class HazardReportServiceImpl implements HazardReportService {
     private static final Logger LOGGER = LoggerFactory.getLogger(HazardReportServiceImpl.class);
 

@@ -59,6 +59,31 @@ body {
   color: #64748b;
 }
 
+.mode-toggle {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 10px;
+  background: #e2e8f0;
+}
+
+.toggle-button {
+  flex: 1;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: #0f172a;
+  font-weight: 600;
+  box-shadow: none;
+}
+
+.toggle-button.active {
+  background: #1f6feb;
+  color: #ffffff;
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.2);
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -174,6 +199,46 @@ button.secondary {
   flex: 1;
 }
 
+.hazard-location-actions {
+  display: flex;
+  gap: 10px;
+  margin: 8px 0 10px;
+  flex-wrap: wrap;
+}
+
+.hazard-location-actions .secondary.is-active {
+  background: #1f6feb;
+  color: #ffffff;
+}
+
+.file-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.file-button {
+  flex: 0 0 auto;
+}
+
+.file-name {
+  font-size: 0.85rem;
+  color: #475569;
+}
+
 .hazard-submit {
   width: 100%;
   margin-top: 8px;
@@ -190,6 +255,40 @@ button.secondary {
   flex-direction: column;
   gap: 8px;
   font-size: 0.95rem;
+}
+
+.route-options {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.route-option {
+  width: 100%;
+  flex: none;
+  justify-content: flex-start;
+  text-align: left;
+  background: var(--route-bg, #f8fafc);
+  color: #0f172a;
+  border: 1px solid var(--route-color, #cbd5f5);
+  box-shadow: none;
+}
+
+.route-option.selected {
+  background: var(--route-bg, #eff6ff);
+  border-color: var(--route-color, #1f6feb);
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.2);
+}
+
+.route-option:hover:not(:disabled) {
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.12);
+}
+
+.route-label {
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #f1f5f9;
+  color: #1f2937;
 }
 
 .results div {

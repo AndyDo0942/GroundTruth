@@ -4,7 +4,6 @@ import com.team.GroundTruth.domain.HazardReportRequest;
 import com.team.GroundTruth.domain.dto.hazardreport.HazardReportDto;
 import com.team.GroundTruth.domain.dto.hazardreport.HazardReportRequestDto;
 import com.team.GroundTruth.domain.entity.HazardReport.HazardReport;
-import java.util.UUID;
 import org.springframework.stereotype.Component;
 
 /**
@@ -27,7 +26,10 @@ public class HazardReportMapperImpl implements HazardReportMapper {
     public HazardReportDto toDto(HazardReport report) {
         return new HazardReportDto(
                 report.getId(),
-                report.getImageBytes(),
+                null,
+                null,
+                report.getLatitude(),
+                report.getLongitude(),
                 report.getCreatedAt(),
                 report.getHazards()
         );

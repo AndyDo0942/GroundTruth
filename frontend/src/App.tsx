@@ -1,13 +1,14 @@
-import { type ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { type ChangeEvent, type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import MapView from './components/MapView';
-import { fetchRoute } from './api/client';
+import { fetchRouteVariant, type RouteVariantKind } from './api/client';
 import { geocodePlace, reverseGeocode } from './api/geocode';
-import { submitHazardReport } from './api/hazards';
-import { HazardMetadata, HazardResponse, HazardType, LatLon, RouteResult } from './types';
+import { fetchRouteMarkers } from './api/markers';
+import { submitHazardReport, submitHazardReportWithImage } from './api/hazards';
+import { HazardReportType, HazardResponse, LatLon, RouteMarkers, RouteResult, TravelMode } from './types';
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
-const DEFAULT_HAZARD_TYPE: HazardType = 'POTHOLE';
+const DEFAULT_HAZARD_TYPE: HazardReportType = 'cracks';
 
 const parseNumber = (value: string) => {
   const parsed = Number(value);
@@ -21,9 +22,52 @@ const formatCoord = (value: number) => value.toFixed(6);
 const isSameLocation = (a: LatLon, b: LatLon, epsilon = 1e-6) =>
   Math.abs(a.lat - b.lat) < epsilon && Math.abs(a.lon - b.lon) < epsilon;
 
+const routeKindLabels: Record<RouteVariantKind, string> = {
+  walkSafe: 'Safe',
+  walkAccessible: 'Accessible',
+  walkSafeAccessible: 'Safe + Accessible',
+  driveFast: 'Fastest',
+  driveSafe: 'Safe',
+};
+
+const routeColors: Record<RouteVariantKind, string> = {
+  walkSafe: '#16a34a',
+  walkAccessible: '#1e3a8a',
+  walkSafeAccessible: '#1f6feb',
+  driveFast: '#1f6feb',
+  driveSafe: '#16a34a',
+};
+
+const hexToRgba = (hex: string, alpha: number) => {
+  const value = hex.replace('#', '');
+  if (value.length !== 6) {
+    return `rgba(0, 0, 0, ${alpha})`;
+  }
+  const r = parseInt(value.slice(0, 2), 16);
+  const g = parseInt(value.slice(2, 4), 16);
+  const b = parseInt(value.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+
+type RouteChoice = {
+  id: string;
+  kinds: RouteVariantKind[];
+  result: RouteResult;
+  color: string;
+  label: string;
+};
+
+type MarkerBounds = {
+  minLat: number;
+  maxLat: number;
+  minLon: number;
+  maxLon: number;
+};
+
 const App = () => {
   const [start, setStart] = useState<LatLon | null>(null);
   const [end, setEnd] = useState<LatLon | null>(null);
+  const [travelMode, setTravelMode] = useState<TravelMode>('WALK');
 
   const [startLat, setStartLat] = useState('');
   const [startLon, setStartLon] = useState('');
@@ -32,7 +76,10 @@ const App = () => {
   const [startPlace, setStartPlace] = useState('');
   const [endPlace, setEndPlace] = useState('');
 
-  const [route, setRoute] = useState<RouteResult | null>(null);
+  const [routeChoices, setRouteChoices] = useState<RouteChoice[]>([]);
+  const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
+  const [routeMarkers, setRouteMarkers] = useState<Record<string, RouteMarkers>>({});
+  const [mapBounds, setMapBounds] = useState<MarkerBounds | null>(null);
   const [loading, setLoading] = useState(false);
   const [geocoding, setGeocoding] = useState<'start' | 'end' | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -41,15 +88,25 @@ const App = () => {
   const [geoError, setGeoError] = useState<string | null>(null);
   const [deviceLocation, setDeviceLocation] = useState<{ lat: number; lon: number; accuracy: number } | null>(null);
 
-  const [hazardFile, setHazardFile] = useState<File | null>(null);
   const [hazardUploading, setHazardUploading] = useState(false);
   const [hazardSuccess, setHazardSuccess] = useState<HazardResponse | null>(null);
   const [hazardError, setHazardError] = useState<string | null>(null);
+  const [hazardType, setHazardType] = useState<HazardReportType>(DEFAULT_HAZARD_TYPE);
+  const [hazardSeverity, setHazardSeverity] = useState('72');
+  const [hazardReportMode, setHazardReportMode] = useState<'quick' | 'photo'>('quick');
+  const [hazardFile, setHazardFile] = useState<File | null>(null);
+  const [hazardPickMode, setHazardPickMode] = useState(false);
+  const [hazardLat, setHazardLat] = useState('');
+  const [hazardLon, setHazardLon] = useState('');
+  const [hazardLocation, setHazardLocation] = useState<LatLon | null>(null);
   const hazardFileRef = useRef<HTMLInputElement | null>(null);
   const startRef = useRef<LatLon | null>(null);
   const hasDefaultedStart = useRef(false);
 
-  const routeCoords = route?.routeGeojson?.geometry?.coordinates ?? null;
+  const selectedRoute = useMemo(
+    () => routeChoices.find((choice) => choice.id === selectedRouteId) ?? null,
+    [routeChoices, selectedRouteId]
+  );
 
   const requestDeviceLocation = () => {
     if (!navigator.geolocation) {
@@ -119,7 +176,9 @@ const App = () => {
   }, [start]);
 
   const clearRouteState = () => {
-    setRoute(null);
+    setRouteChoices([]);
+    setSelectedRouteId(null);
+    setRouteMarkers({});
     setError(null);
   };
 
@@ -239,26 +298,94 @@ const App = () => {
     }
 
     setLoading(true);
-    const result = await fetchRoute({
+    const params = {
       startLat: start.lat,
       startLon: start.lon,
       endLat: end.lat,
       endLon: end.lon,
-    });
+    };
+
+    const variants: RouteVariantKind[] =
+      travelMode === 'DRIVE'
+        ? ['driveFast', 'driveSafe']
+        : ['walkSafe', 'walkAccessible', 'walkSafeAccessible'];
+    const responses = await Promise.all(variants.map((variant) => fetchRouteVariant(params, variant)));
     setLoading(false);
 
-    if (result.kind === 'ok') {
-      setRoute(result.data);
+    const okRoutes: Array<{ kind: RouteVariantKind; result: RouteResult }> = [];
+    const errorMessages: string[] = [];
+
+    responses.forEach((response, index) => {
+      const kind = variants[index];
+      if (response.kind === 'ok') {
+        okRoutes.push({ kind, result: response.data });
+        return;
+      }
+
+      if (response.kind === 'no_route') {
+        const message = response.message ? `No ${routeKindLabels[kind]} route: ${response.message}` : 'No route found.';
+        errorMessages.push(message);
+        return;
+      }
+
+      errorMessages.push(`${routeKindLabels[kind]} route error: ${response.message}`);
+    });
+
+    if (okRoutes.length === 0) {
+      setError(errorMessages[0] ?? 'No route found.');
       return;
     }
 
-    if (result.kind === 'no_route') {
-      const message = result.message ? `No route found: ${result.message}` : 'No route found.';
-      setError(message);
-      return;
-    }
+    const consolidated = new Map<string, { kinds: RouteVariantKind[]; result: RouteResult }>();
+    okRoutes.forEach(({ kind, result }) => {
+      const coords = result.routeGeojson?.geometry?.coordinates ?? [];
+      const key = JSON.stringify(coords);
+      const entry = consolidated.get(key);
+      if (entry) {
+        entry.kinds.push(kind);
+      } else {
+        consolidated.set(key, { kinds: [kind], result });
+      }
+    });
 
-    setError(result.message);
+    const kindOrder: RouteVariantKind[] =
+      travelMode === 'DRIVE'
+        ? ['driveFast', 'driveSafe']
+        : ['walkSafeAccessible', 'walkSafe', 'walkAccessible'];
+    const choices: RouteChoice[] = Array.from(consolidated.values()).map(({ kinds, result }) => {
+      const orderedKinds = kindOrder.filter((kind) => kinds.includes(kind));
+      const color = orderedKinds[0] ? routeColors[orderedKinds[0]] : '#1f6feb';
+      return {
+        id: orderedKinds.join('-'),
+        kinds: orderedKinds,
+        result,
+        color,
+        label: orderedKinds.map((kind) => routeKindLabels[kind]).join(' · '),
+      };
+    });
+
+    choices.sort((a, b) => {
+      const aIndex = kindOrder.findIndex((kind) => a.kinds.includes(kind));
+      const bIndex = kindOrder.findIndex((kind) => b.kinds.includes(kind));
+      return aIndex - bIndex;
+    });
+
+    setRouteChoices(choices);
+    const defaultChoice = choices.find((choice) =>
+      travelMode === 'DRIVE' ? choice.kinds.includes('driveFast') : choice.kinds.includes('walkSafeAccessible')
+    );
+    setSelectedRouteId(defaultChoice?.id ?? choices[0]?.id ?? null);
+
+    if (mapBounds) {
+      const response = await fetchRouteMarkers(mapBounds);
+      if (response.kind === 'ok') {
+        const nextMarkers: Record<string, RouteMarkers> = {};
+        choices.forEach((choice) => {
+          nextMarkers[choice.id] = response.data;
+        });
+        setRouteMarkers(nextMarkers);
+      }
+    }
   };
 
   const resetHazardMessages = () => {
@@ -280,36 +407,58 @@ const App = () => {
       return;
     }
 
-    if (!hazardFile) {
-      setHazardError('Please select an image to upload.');
+    const selectedLocation = hazardLocation ?? (deviceLocation ? { lat: deviceLocation.lat, lon: deviceLocation.lon } : null);
+    if (!selectedLocation) {
+      setHazardError('Please select a location for the hazard report.');
       return;
     }
-
-    if (!ALLOWED_IMAGE_TYPES.has(hazardFile.type)) {
-      setHazardError('Image type must be JPEG, PNG, or WEBP.');
-      return;
-    }
-
-    if (hazardFile.size > MAX_IMAGE_BYTES) {
-      setHazardError('Image must be 10MB or smaller.');
-      return;
-    }
-
-    const metadata: HazardMetadata = {
-      lat: deviceLocation.lat,
-      lon: deviceLocation.lon,
-      type: DEFAULT_HAZARD_TYPE,
-      capturedAt: new Date().toISOString(),
-    };
 
     setHazardUploading(true);
     try {
-      const response = await submitHazardReport(hazardFile, metadata);
-      setHazardSuccess(response);
-      setHazardFile(null);
-      if (hazardFileRef.current) {
-        hazardFileRef.current.value = '';
+      if (hazardReportMode === 'photo') {
+        if (!hazardFile) {
+          setHazardError('Please select an image to upload.');
+          setHazardUploading(false);
+          return;
+        }
+        if (!ALLOWED_IMAGE_TYPES.has(hazardFile.type)) {
+          setHazardError('Image type must be JPEG, PNG, or WEBP.');
+          setHazardUploading(false);
+          return;
+        }
+        if (hazardFile.size > MAX_IMAGE_BYTES) {
+          setHazardError('Image must be 10MB or smaller.');
+          setHazardUploading(false);
+          return;
+        }
+        const response = await submitHazardReportWithImage(hazardFile, {
+          latitude: selectedLocation.lat,
+          longitude: selectedLocation.lon,
+        });
+        setHazardSuccess(response);
+        setHazardFile(null);
+        if (hazardFileRef.current) {
+          hazardFileRef.current.value = '';
+        }
+      } else {
+        const severityValue = parseNumber(hazardSeverity);
+        if (severityValue === null || severityValue < 0 || severityValue > 100) {
+          setHazardError('Severity must be between 0 and 100.');
+          setHazardUploading(false);
+          return;
+        }
+        const response = await submitHazardReport({
+          type: hazardType,
+          latitude: selectedLocation.lat,
+          longitude: selectedLocation.lon,
+          severity: Math.round(severityValue),
+        });
+        setHazardSuccess(response);
       }
+      setHazardPickMode(false);
+      setHazardLocation(null);
+      setHazardLat('');
+      setHazardLon('');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Upload failed.';
       setHazardError(message);
@@ -328,19 +477,21 @@ const App = () => {
     setStartPlace('');
     setEndPlace('');
     setGeocoding(null);
-    setRoute(null);
+    setRouteChoices([]);
+    setSelectedRouteId(null);
+    setRouteMarkers({});
     setError(null);
   };
 
   const distanceKm = useMemo(() => {
-    if (!route) return null;
-    return (route.distanceMeters / 1000).toFixed(2);
-  }, [route]);
+    if (!selectedRoute) return null;
+    return (selectedRoute.result.distanceMeters / 1000).toFixed(2);
+  }, [selectedRoute]);
 
   const durationMinutes = useMemo(() => {
-    if (!route) return null;
-    return (route.durationSeconds / 60).toFixed(1);
-  }, [route]);
+    if (!selectedRoute) return null;
+    return (selectedRoute.result.durationSeconds / 60).toFixed(1);
+  }, [selectedRoute]);
 
   const formatList = (items: number[]) => items.slice(0, 10).join(', ');
   const geocodeStatus =
@@ -351,7 +502,27 @@ const App = () => {
       : null;
   const routeDisabled = loading || !start || !end;
   const hazardInputsDisabled = geoStatus !== 'ready' || hazardUploading;
-  const hazardSubmitDisabled = hazardInputsDisabled || !hazardFile;
+  const hazardSubmitDisabled =
+    hazardInputsDisabled ||
+    (!hazardLocation && (!deviceLocation || geoStatus !== 'ready')) ||
+    (hazardReportMode === 'photo' && !hazardFile);
+  const mapRoutes = useMemo(() => {
+    const mapped = routeChoices.map((choice) => ({
+      id: choice.id,
+      color: choice.color,
+      coordinates: choice.result.routeGeojson.geometry.coordinates ?? [],
+    }));
+
+    if (!selectedRouteId) {
+      return mapped;
+    }
+
+    const selected = mapped.find((route) => route.id === selectedRouteId);
+    const rest = mapped.filter((route) => route.id !== selectedRouteId);
+    return selected ? [...rest, selected] : mapped;
+  }, [routeChoices, selectedRouteId]);
+  const activeRouteId = selectedRouteId ?? routeChoices[0]?.id ?? null;
+  const activeMarkers = activeRouteId ? routeMarkers[activeRouteId] ?? null : null;
   const locationLabel =
     geoStatus === 'ready' && deviceLocation
       ? `Location: ${deviceLocation.lat.toFixed(6)}, ${deviceLocation.lon.toFixed(6)} (accuracy ~ ${Math.round(
@@ -363,13 +534,87 @@ const App = () => {
       ? `Location unavailable: ${geoError ?? 'Unable to retrieve location.'}`
       : 'Location: Not requested';
 
+  const handleHazardLocationInput = (nextLat: string, nextLon: string) => {
+    setHazardLat(nextLat);
+    setHazardLon(nextLon);
+    const latValue = parseNumber(nextLat);
+    const lonValue = parseNumber(nextLon);
+    if (latValue !== null && lonValue !== null && isValidLat(latValue) && isValidLon(lonValue)) {
+      setHazardLocation({ lat: latValue, lon: lonValue });
+    } else {
+      setHazardLocation(null);
+    }
+  };
+
+  useEffect(() => {
+    if (!mapBounds || routeChoices.length === 0) {
+      return;
+    }
+    let cancelled = false;
+    const run = async () => {
+      const response = await fetchRouteMarkers(mapBounds);
+      if (cancelled || response.kind !== 'ok') {
+        return;
+      }
+      const nextMarkers: Record<string, RouteMarkers> = {};
+      routeChoices.forEach((choice) => {
+        nextMarkers[choice.id] = response.data;
+      });
+      setRouteMarkers(nextMarkers);
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [mapBounds, routeChoices]);
+
+  const routeOptionStyle = (choice: RouteChoice, selected: boolean): CSSProperties =>
+    ({
+      '--route-color': choice.color,
+      '--route-bg': hexToRgba(choice.color, selected ? 0.2 : 0.1),
+    }) as CSSProperties;
+
+  const handleBoundsChange = useCallback((bounds: MarkerBounds) => {
+    setMapBounds(bounds);
+  }, []);
+
   return (
     <div className="app">
       <aside className="panel">
         <header>
-          <h1>Walking Route</h1>
+          <h1>Route Planner</h1>
           <p>Click the map, search for a place, or enter coordinates to plan a route.</p>
         </header>
+
+        <section className="section">
+          <h2>Travel mode</h2>
+          <div className="mode-toggle">
+            <button
+              type="button"
+              className={`toggle-button ${travelMode === 'WALK' ? 'active' : ''}`}
+              onClick={() => {
+                if (travelMode !== 'WALK') {
+                  setTravelMode('WALK');
+                  clearRouteState();
+                }
+              }}
+            >
+              Walk
+            </button>
+            <button
+              type="button"
+              className={`toggle-button ${travelMode === 'DRIVE' ? 'active' : ''}`}
+              onClick={() => {
+                if (travelMode !== 'DRIVE') {
+                  setTravelMode('DRIVE');
+                  clearRouteState();
+                }
+              }}
+            >
+              Drive
+            </button>
+          </div>
+        </section>
 
         <section className="section">
           <h2>Start</h2>
@@ -477,44 +722,65 @@ const App = () => {
         {loading && <div className="status">Fetching route...</div>}
 
         <section className="section">
-          <h2>Results</h2>
-          {!route && <p className="muted">No route yet. Click Route to calculate.</p>}
-          {route && (
-            <div className="results">
-              <div>
-                <span>Distance</span>
-                <strong>
-                  {route.distanceMeters.toFixed(1)} m ({distanceKm} km)
-                </strong>
+          <h2>Routes</h2>
+          {routeChoices.length === 0 && <p className="muted">No route yet. Click Route to calculate.</p>}
+          {routeChoices.length > 0 && (
+            <>
+              <div className="route-options">
+                {routeChoices.map((choice) => (
+                  <button
+                    key={choice.id}
+                    type="button"
+                    className={`route-option ${selectedRouteId === choice.id ? 'selected' : ''}`}
+                    style={routeOptionStyle(choice, selectedRouteId === choice.id)}
+                    onClick={() => setSelectedRouteId(choice.id)}
+                  >
+                    <span>{choice.label}</span>
+                  </button>
+                ))}
               </div>
-              <div>
-                <span>Duration</span>
-                <strong>
-                  {route.durationSeconds.toFixed(1)} s ({durationMinutes} min)
-                </strong>
-              </div>
-              <details>
-                <summary>Debug info</summary>
-                <div className="debug">
-                  <div>
-                    <span>Node count</span>
-                    <strong>{route.pathNodeIds.length}</strong>
+              {selectedRoute && (
+                <div className="results">
+                  <div className="route-label">
+                    <span>Selected</span>
+                    <strong>{selectedRoute.label}</strong>
                   </div>
                   <div>
-                    <span>Edge count</span>
-                    <strong>{route.pathEdgeIds.length}</strong>
+                    <span>Distance</span>
+                    <strong>
+                      {selectedRoute.result.distanceMeters.toFixed(1)} m ({distanceKm} km)
+                    </strong>
                   </div>
                   <div>
-                    <span>First 10 node IDs</span>
-                    <strong>{formatList(route.pathNodeIds) || '—'}</strong>
+                    <span>Duration</span>
+                    <strong>
+                      {selectedRoute.result.durationSeconds.toFixed(1)} s ({durationMinutes} min)
+                    </strong>
                   </div>
-                  <div>
-                    <span>First 10 edge IDs</span>
-                    <strong>{formatList(route.pathEdgeIds) || '—'}</strong>
-                  </div>
+                  <details>
+                    <summary>Debug info</summary>
+                    <div className="debug">
+                      <div>
+                        <span>Node count</span>
+                        <strong>{selectedRoute.result.pathNodeIds.length}</strong>
+                      </div>
+                      <div>
+                        <span>Edge count</span>
+                        <strong>{selectedRoute.result.pathEdgeIds.length}</strong>
+                      </div>
+                      <div>
+                        <span>First 10 node IDs</span>
+                        <strong>{formatList(selectedRoute.result.pathNodeIds) || '—'}</strong>
+                      </div>
+                      <div>
+                        <span>First 10 edge IDs</span>
+                        <strong>{formatList(selectedRoute.result.pathEdgeIds) || '—'}</strong>
+                      </div>
+                    </div>
+                  </details>
                 </div>
-              </details>
-            </div>
+              )}
+            </>
           )}
         </section>
 
@@ -527,15 +793,113 @@ const App = () => {
             </button>
           </div>
           <label className="full">
-            Image
-            <input
-              ref={hazardFileRef}
-              type="file"
-              accept="image/*"
-              onChange={handleHazardFileChange}
+            Report mode
+            <select
+              value={hazardReportMode}
+              onChange={(event) => setHazardReportMode(event.target.value as 'quick' | 'photo')}
               disabled={hazardInputsDisabled}
-            />
+            >
+              <option value="quick">Quick report</option>
+              <option value="photo">Photo report</option>
+            </select>
           </label>
+          {hazardReportMode === 'quick' && (
+            <div className="grid">
+              <label>
+                Type
+                <select
+                  value={hazardType}
+                  onChange={(event) => setHazardType(event.target.value as HazardReportType)}
+                  disabled={hazardInputsDisabled}
+                >
+                  <option value="cracks">Cracks</option>
+                  <option value="blocked sidewalk">Blocked sidewalk</option>
+                </select>
+              </label>
+              <label>
+                Severity (0-100)
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={hazardSeverity}
+                  onChange={(event) => setHazardSeverity(event.target.value)}
+                  disabled={hazardInputsDisabled}
+                />
+              </label>
+            </div>
+          )}
+          <div className="grid">
+            <label>
+              Hazard Lat
+              <input
+                type="number"
+                inputMode="decimal"
+                value={hazardLat}
+                onChange={(event) => handleHazardLocationInput(event.target.value, hazardLon)}
+                placeholder="e.g. 42.4440"
+                disabled={hazardInputsDisabled}
+              />
+            </label>
+            <label>
+              Hazard Lon
+              <input
+                type="number"
+                inputMode="decimal"
+                value={hazardLon}
+                onChange={(event) => handleHazardLocationInput(hazardLat, event.target.value)}
+                placeholder="e.g. -76.4951"
+                disabled={hazardInputsDisabled}
+              />
+            </label>
+          </div>
+          <div className="hazard-location-actions">
+            <button
+              type="button"
+              className={`secondary ${hazardPickMode ? 'is-active' : ''}`}
+              onClick={() => setHazardPickMode((prev) => !prev)}
+              disabled={hazardInputsDisabled}
+            >
+              {hazardPickMode ? 'Click map to set location' : 'Pick location on map'}
+            </button>
+            {hazardLocation && (
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => {
+                  setHazardLocation(null);
+                  setHazardLat('');
+                  setHazardLon('');
+                  setHazardPickMode(false);
+                }}
+                disabled={hazardInputsDisabled}
+              >
+                Clear location
+              </button>
+            )}
+          </div>
+          {hazardReportMode === 'photo' && (
+            <div className="file-row">
+              <input
+                ref={hazardFileRef}
+                className="file-input"
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handleHazardFileChange}
+                disabled={hazardInputsDisabled}
+              />
+              <button
+                type="button"
+                className="secondary file-button"
+                onClick={() => hazardFileRef.current?.click()}
+                disabled={hazardInputsDisabled}
+              >
+                Take Photo
+              </button>
+              <span className="file-name">{hazardFile ? hazardFile.name : 'No file selected'}</span>
+            </div>
+          )}
           <button type="button" className="hazard-submit" onClick={handleHazardSubmit} disabled={hazardSubmitDisabled}>
             {hazardUploading ? 'Uploading...' : 'Submit hazard'}
           </button>
@@ -551,7 +915,21 @@ const App = () => {
           end={end}
           deviceLocation={deviceLocation}
           deviceZoom={17}
-          routeCoords={routeCoords}
+          routes={mapRoutes}
+          selectedRouteId={selectedRouteId}
+          onSelectRoute={(routeId) => setSelectedRouteId(routeId)}
+          hazardMarkers={activeMarkers?.hazardMarkers ?? []}
+          hazardLocation={hazardLocation}
+          hazardPickMode={hazardPickMode}
+          onHazardPick={(lat, lon) => {
+            setHazardPickMode(false);
+            const formattedLat = formatCoord(lat);
+            const formattedLon = formatCoord(lon);
+            setHazardLat(formattedLat);
+            setHazardLon(formattedLon);
+            setHazardLocation({ lat, lon });
+          }}
+          onBoundsChange={handleBoundsChange}
           onMapClick={handleMapClick}
         />
       </main>

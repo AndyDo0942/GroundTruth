@@ -1,6 +1,6 @@
 import { RouteResult } from '../types';
 
-type RouteParams = {
+export type RouteParams = {
   startLat: number;
   startLon: number;
   endLat: number;
@@ -11,6 +11,8 @@ export type RouteResponse =
   | { kind: 'ok'; data: RouteResult }
   | { kind: 'no_route'; message: string }
   | { kind: 'error'; message: string; status?: number };
+
+export type RouteVariantKind = 'walkSafe' | 'walkAccessible' | 'walkSafeAccessible' | 'driveFast' | 'driveSafe';
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
 
@@ -36,14 +38,20 @@ const readErrorMessage = async (response: Response) => {
   return text || response.statusText || 'Request failed.';
 };
 
-export const fetchRoute = async (params: RouteParams): Promise<RouteResponse> => {
-  const url = buildUrl('/routing/route');
-  console.log(url)
+const routeVariantPaths: Record<RouteVariantKind, string> = {
+  walkSafe: '/routing/route/walk/safe',
+  walkAccessible: '/routing/route/walk/accessible',
+  walkSafeAccessible: '/routing/route/walk/safe-accessible',
+  driveFast: '/routing/route/drive',
+  driveSafe: '/routing/route/drive/safe',
+};
+
+export const fetchRouteVariant = async (params: RouteParams, variant: RouteVariantKind): Promise<RouteResponse> => {
+  const url = buildUrl(routeVariantPaths[variant]);
   url.searchParams.set('startLat', String(params.startLat));
   url.searchParams.set('startLon', String(params.startLon));
   url.searchParams.set('endLat', String(params.endLat));
   url.searchParams.set('endLon', String(params.endLon));
-
   try {
     const response = await fetch(url.toString());
     if (response.ok) {
