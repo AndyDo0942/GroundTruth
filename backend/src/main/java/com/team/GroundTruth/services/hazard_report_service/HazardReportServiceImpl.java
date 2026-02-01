@@ -7,6 +7,8 @@ import com.team.GroundTruth.domain.entity.User.User;
 import com.team.GroundTruth.exception.HazardReportNotFoundException;
 import com.team.GroundTruth.repository.HazardReportRepository;
 import com.team.GroundTruth.repository.UserRepository;
+import com.team.GroundTruth.routing.model.HazardType;
+import com.team.GroundTruth.routing.service.WalkAccessibilityService;
 import com.team.GroundTruth.services.hazard_analysis_service.HazardAnalysisResult;
 import com.team.GroundTruth.services.hazard_analysis_service.HazardAnalysisService;
 import com.team.GroundTruth.services.hazard_analysis_service.HazardScore;
@@ -36,21 +38,29 @@ public class HazardReportServiceImpl implements HazardReportService {
      * AI service used to analyze report images.
      */
     private final HazardAnalysisService hazardAnalysisService;
+    /**
+     * Service used to update walk accessibility edge costs when hazards change.
+     */
+    private final WalkAccessibilityService walkAccessibilityService;
 
     /**
      * Creates the service with its repository dependencies.
      *
      * @param hazardReportRepository repository for hazard report persistence
      * @param userRepository repository for user lookups
+     * @param hazardAnalysisService AI service for image analysis
+     * @param walkAccessibilityService service for updating edge costs
      */
     public HazardReportServiceImpl(
             HazardReportRepository hazardReportRepository,
             UserRepository userRepository,
-            HazardAnalysisService hazardAnalysisService
+            HazardAnalysisService hazardAnalysisService,
+            WalkAccessibilityService walkAccessibilityService
     ) {
         this.hazardReportRepository = hazardReportRepository;
         this.userRepository = userRepository;
         this.hazardAnalysisService = hazardAnalysisService;
+        this.walkAccessibilityService = walkAccessibilityService;
     }
 
     /**
@@ -85,6 +95,9 @@ public class HazardReportServiceImpl implements HazardReportService {
                 }
                 savedReport.setHazards(hazards);
                 savedReport = hazardReportRepository.save(savedReport);
+
+                // Update walk accessibility edge costs for accessibility hazards
+                updateAccessibilityEdgeCosts(savedReport);
             }
         } catch (RuntimeException ex) {
             LOGGER.warn("AI hazard analysis failed for report {}", savedReport.getId(), ex);
@@ -123,9 +136,64 @@ public class HazardReportServiceImpl implements HazardReportService {
      */
     @Override
     public void deleteHazardReport(UUID id) {
-        if (!hazardReportRepository.existsById(id)) {
-            throw new HazardReportNotFoundException(id);
-        }
+        HazardReport report = hazardReportRepository.findById(id)
+                .orElseThrow(() -> new HazardReportNotFoundException(id));
+
+        // Remove hazard contributions from edge costs before deleting
+        removeAccessibilityEdgeCosts(report);
+
         hazardReportRepository.deleteById(id);
+    }
+
+    /**
+     * Updates walk accessibility edge costs for any accessibility hazards in the report.
+     * Called after hazards are created/analyzed.
+     *
+     * @param report the hazard report with hazards
+     */
+    private void updateAccessibilityEdgeCosts(HazardReport report) {
+        if (report.getLatitude() == null || report.getLongitude() == null) {
+            LOGGER.debug("Skipping edge cost update - report {} has no location", report.getId());
+            return;
+        }
+
+        for (Hazard hazard : report.getHazards()) {
+            HazardType hazardType = HazardType.fromLabel(hazard.getLabel());
+            if (hazardType != null && hazardType.isAccessibilityHazard()) {
+                try {
+                    double severity = hazard.getConfidence() != null ? hazard.getConfidence() : 50.0;
+                    int updated = walkAccessibilityService.updateForHazard(
+                            hazard.getId(),
+                            hazard.getLabel(),
+                            report.getLatitude().doubleValue(),
+                            report.getLongitude().doubleValue(),
+                            severity
+                    );
+                    LOGGER.info("Updated {} edge costs for hazard {} ({})",
+                            updated, hazard.getId(), hazard.getLabel());
+                } catch (RuntimeException ex) {
+                    LOGGER.warn("Failed to update edge costs for hazard {}", hazard.getId(), ex);
+                }
+            }
+        }
+    }
+
+    /**
+     * Removes hazard contributions from edge costs before deleting the report.
+     *
+     * @param report the hazard report being deleted
+     */
+    private void removeAccessibilityEdgeCosts(HazardReport report) {
+        for (Hazard hazard : report.getHazards()) {
+            HazardType hazardType = HazardType.fromLabel(hazard.getLabel());
+            if (hazardType != null && hazardType.isAccessibilityHazard()) {
+                try {
+                    int updated = walkAccessibilityService.removeHazard(hazard.getId());
+                    LOGGER.info("Removed hazard {} from {} edge costs", hazard.getId(), updated);
+                } catch (RuntimeException ex) {
+                    LOGGER.warn("Failed to remove hazard {} from edge costs", hazard.getId(), ex);
+                }
+            }
+        }
     }
 }

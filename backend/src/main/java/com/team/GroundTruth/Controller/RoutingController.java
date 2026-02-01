@@ -4,6 +4,7 @@ import com.team.GroundTruth.domain.dto.routing.RouteTimeRequestDto;
 import com.team.GroundTruth.domain.dto.routing.RouteTimeResponseDto;
 import com.team.GroundTruth.domain.dto.routing.RouteResponseDto;
 import com.team.GroundTruth.routing.model.RouteResult;
+import com.team.GroundTruth.routing.model.RouteType;
 import com.team.GroundTruth.routing.model.TravelMode;
 import com.team.GroundTruth.routing.repo.EdgeRepository;
 import com.team.GroundTruth.routing.service.RoutingService;
@@ -81,6 +82,9 @@ public class RoutingController {
 	 * @param radiusMeters search radius in meters
 	 * @return route response
 	 */
+	/**
+	 * Returns a basic walking route (fastest, base costs only).
+	 */
 	@GetMapping(path = "/route")
 	public RouteResponseDto route(
 			@RequestParam double startLat,
@@ -101,7 +105,148 @@ public class RoutingController {
 				effectiveRadius,
 				travelMode
 		);
+		return buildRouteResponse(result);
+	}
 
+	/**
+	 * Returns a route using a specific route type for cost calculation.
+	 * Route types: fastest, walk_safe, walk_accessible, walk_safe_accessible, drive_fastest, drive_safe
+	 *
+	 * @param startLat start latitude
+	 * @param startLon start longitude
+	 * @param endLat end latitude
+	 * @param endLon end longitude
+	 * @param routeType route type for cost strategy
+	 * @param radiusMeters search radius in meters
+	 * @return route response
+	 */
+	@GetMapping(path = "/route/type")
+	public RouteResponseDto routeByType(
+			@RequestParam double startLat,
+			@RequestParam double startLon,
+			@RequestParam double endLat,
+			@RequestParam double endLon,
+			@RequestParam String routeType,
+			@RequestParam(required = false) Double radiusMeters
+	) {
+		RouteType type = RouteType.fromValue(routeType);
+		if (type == null) {
+			throw new IllegalArgumentException("Unknown route type: " + routeType +
+					". Valid types: fastest, walk_safe, walk_accessible, walk_safe_accessible, drive_fastest, drive_safe");
+		}
+
+		double effectiveRadius = radiusMeters == null ? 0.0 : radiusMeters;
+		RouteResult result = routingService.route(
+				new com.team.GroundTruth.routing.model.Location(startLat, startLon),
+				new com.team.GroundTruth.routing.model.Location(endLat, endLon),
+				effectiveRadius,
+				type
+		);
+
+		return buildRouteResponse(result);
+	}
+
+	/**
+	 * Returns a safe walking route optimized for safety (avoids high-crime, poorly-lit areas).
+	 */
+	@GetMapping(path = "/route/walk/safe")
+	public RouteResponseDto routeWalkSafe(
+			@RequestParam double startLat,
+			@RequestParam double startLon,
+			@RequestParam double endLat,
+			@RequestParam double endLon,
+			@RequestParam(required = false) Double radiusMeters
+	) {
+		double effectiveRadius = radiusMeters == null ? 0.0 : radiusMeters;
+		RouteResult result = routingService.routeWalkingSafe(
+				new com.team.GroundTruth.routing.model.Location(startLat, startLon),
+				new com.team.GroundTruth.routing.model.Location(endLat, endLon),
+				effectiveRadius
+		);
+		return buildRouteResponse(result);
+	}
+
+	/**
+	 * Returns an accessible walking route (avoids cracks, blocked sidewalks).
+	 */
+	@GetMapping(path = "/route/walk/accessible")
+	public RouteResponseDto routeWalkAccessible(
+			@RequestParam double startLat,
+			@RequestParam double startLon,
+			@RequestParam double endLat,
+			@RequestParam double endLon,
+			@RequestParam(required = false) Double radiusMeters
+	) {
+		double effectiveRadius = radiusMeters == null ? 0.0 : radiusMeters;
+		RouteResult result = routingService.routeWalkingAccessible(
+				new com.team.GroundTruth.routing.model.Location(startLat, startLon),
+				new com.team.GroundTruth.routing.model.Location(endLat, endLon),
+				effectiveRadius
+		);
+		return buildRouteResponse(result);
+	}
+
+	/**
+	 * Returns a walking route optimized for both safety and accessibility.
+	 */
+	@GetMapping(path = "/route/walk/safe-accessible")
+	public RouteResponseDto routeWalkSafeAccessible(
+			@RequestParam double startLat,
+			@RequestParam double startLon,
+			@RequestParam double endLat,
+			@RequestParam double endLon,
+			@RequestParam(required = false) Double radiusMeters
+	) {
+		double effectiveRadius = radiusMeters == null ? 0.0 : radiusMeters;
+		RouteResult result = routingService.routeWalkingSafeAccessible(
+				new com.team.GroundTruth.routing.model.Location(startLat, startLon),
+				new com.team.GroundTruth.routing.model.Location(endLat, endLon),
+				effectiveRadius
+		);
+		return buildRouteResponse(result);
+	}
+
+	/**
+	 * Returns a driving route (fastest, base costs only).
+	 */
+	@GetMapping(path = "/route/drive")
+	public RouteResponseDto routeDrive(
+			@RequestParam double startLat,
+			@RequestParam double startLon,
+			@RequestParam double endLat,
+			@RequestParam double endLon,
+			@RequestParam(required = false) Double radiusMeters
+	) {
+		double effectiveRadius = radiusMeters == null ? 0.0 : radiusMeters;
+		RouteResult result = routingService.routeDriving(
+				new com.team.GroundTruth.routing.model.Location(startLat, startLon),
+				new com.team.GroundTruth.routing.model.Location(endLat, endLon),
+				effectiveRadius
+		);
+		return buildRouteResponse(result);
+	}
+
+	/**
+	 * Returns a safe driving route (avoids potholes, ice hazards).
+	 */
+	@GetMapping(path = "/route/drive/safe")
+	public RouteResponseDto routeDriveSafe(
+			@RequestParam double startLat,
+			@RequestParam double startLon,
+			@RequestParam double endLat,
+			@RequestParam double endLon,
+			@RequestParam(required = false) Double radiusMeters
+	) {
+		double effectiveRadius = radiusMeters == null ? 0.0 : radiusMeters;
+		RouteResult result = routingService.routeDrivingSafe(
+				new com.team.GroundTruth.routing.model.Location(startLat, startLon),
+				new com.team.GroundTruth.routing.model.Location(endLat, endLon),
+				effectiveRadius
+		);
+		return buildRouteResponse(result);
+	}
+
+	private RouteResponseDto buildRouteResponse(RouteResult result) {
 		RouteResponseDto.GeoJsonFeature geoJson = buildGeoJson(result);
 		return new RouteResponseDto(
 				result.distanceMeters(),
