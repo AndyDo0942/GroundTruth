@@ -87,14 +87,19 @@ public class RoutingController {
 			@RequestParam double startLon,
 			@RequestParam double endLat,
 			@RequestParam double endLon,
+			@RequestParam(required = false) TravelMode travelMode,
 			@RequestParam(required = false) Double radiusMeters
 	) {
 		double effectiveRadius = radiusMeters == null ? 0.0 : radiusMeters;
+		if (travelMode == null) {
+			travelMode = TravelMode.WALK;
+		}
+
 		RouteResult result = routingService.route(
 				new com.team.GroundTruth.routing.model.Location(startLat, startLon),
 				new com.team.GroundTruth.routing.model.Location(endLat, endLon),
 				effectiveRadius,
-				TravelMode.WALK
+				travelMode
 		);
 
 		RouteResponseDto.GeoJsonFeature geoJson = buildGeoJson(result);
