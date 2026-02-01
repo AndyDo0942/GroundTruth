@@ -15,7 +15,7 @@ public interface HazardReportMapper {
      * @param dto incoming request DTO
      * @return domain request
      */
-    HazardReportRequest fromDto(HazardReportRequestDto dto);
+    HazardReportRequest fromDto(HazardReportRequestDto dto, byte[] imageBytes, String imageContentType);
 
     /**
      * Converts a domain hazard report to an outbound DTO.

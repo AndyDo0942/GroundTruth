@@ -21,13 +21,6 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(errorDto, HttpStatus.BAD_REQUEST);
     }
 
-    @ExceptionHandler(UserNotFoundException.class)
-    public ResponseEntity<ErrorResponseDto> handleExceptions(UserNotFoundException ex) {
-        ErrorResponseDto errorResponseDto = new ErrorResponseDto(String.format("User with ID '%s' not found", ex.getId()));
-
-        return new ResponseEntity<>(errorResponseDto, HttpStatus.BAD_REQUEST);
-    }
-
     @ExceptionHandler(HazardReportNotFoundException.class)
     public ResponseEntity<ErrorResponseDto> handleHazardReportNotFound(HazardReportNotFoundException ex) {
         ErrorResponseDto errorResponseDto = new ErrorResponseDto(String.format("Hazard report with ID '%s' not found", ex.getId()));

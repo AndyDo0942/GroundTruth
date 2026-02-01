@@ -2,7 +2,6 @@ package com.team.GroundTruth.domain.entity.HazardReport;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.team.GroundTruth.domain.entity.Hazard.Hazard;
-import com.team.GroundTruth.domain.entity.User.User;
 import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -23,17 +22,17 @@ public class HazardReport {
     private UUID id;
 
     /**
-     * User who submitted the report.
+     * Raw image bytes for the report.
      */
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
-    private User user;
+    @Lob
+    @Column(name = "image_bytes")
+    private byte[] imageBytes;
 
     /**
-     * URL of the uploaded image used for classification.
+     * MIME type for the stored image bytes.
      */
-    @Column(name="image_url")
-    private String imageUrl;
+    @Column(name = "image_content_type", length = 100)
+    private String imageContentType;
 
     /**
      * Timestamp when the report was created.
@@ -91,36 +90,41 @@ public class HazardReport {
      *
      * @return authoring user
      */
-    @JsonIgnore
-    public User getUser() {
-        return user;
+
+    /**
+     * Returns the image bytes associated with the report.
+     *
+     * @return image bytes
+     */
+    public byte[] getImageBytes() {
+        return imageBytes;
     }
 
     /**
-     * Sets the user who authored the report.
+     * Sets the image bytes associated with the report.
      *
-     * @param user authoring user
+     * @param imageBytes image bytes
      */
-    public void setUser(User user) {
-        this.user = user;
+    public void setImageBytes(byte[] imageBytes) {
+        this.imageBytes = imageBytes;
     }
 
     /**
-     * Returns the image URL associated with the report.
+     * Returns the image MIME type associated with the report.
      *
-     * @return image URL
+     * @return image MIME type
      */
-    public String getImageUrl() {
-        return imageUrl;
+    public String getImageContentType() {
+        return imageContentType;
     }
 
     /**
-     * Sets the image URL associated with the report.
+     * Sets the image MIME type associated with the report.
      *
-     * @param imageUrl image URL
+     * @param imageContentType image MIME type
      */
-    public void setImageUrl(String imageUrl) {
-        this.imageUrl = imageUrl;
+    public void setImageContentType(String imageContentType) {
+        this.imageContentType = imageContentType;
     }
 
     /**

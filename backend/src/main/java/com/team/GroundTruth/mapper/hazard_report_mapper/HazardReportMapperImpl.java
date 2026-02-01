@@ -16,8 +16,8 @@ public class HazardReportMapperImpl implements HazardReportMapper {
      * {@inheritDoc}
      */
     @Override
-    public HazardReportRequest fromDto(HazardReportRequestDto dto) {
-        return new HazardReportRequest(dto.userId(), dto.imageUrl(), dto.latitude(), dto.longitude());
+    public HazardReportRequest fromDto(HazardReportRequestDto dto, byte[] imageBytes, String imageContentType) {
+        return new HazardReportRequest(imageBytes, imageContentType, dto.latitude(), dto.longitude());
     }
 
     /**
@@ -25,11 +25,9 @@ public class HazardReportMapperImpl implements HazardReportMapper {
      */
     @Override
     public HazardReportDto toDto(HazardReport report) {
-        UUID userId = report.getUser() != null ? report.getUser().getId() : null;
         return new HazardReportDto(
                 report.getId(),
-                userId,
-                report.getImageUrl(),
+                report.getImageBytes(),
                 report.getCreatedAt(),
                 report.getHazards()
         );

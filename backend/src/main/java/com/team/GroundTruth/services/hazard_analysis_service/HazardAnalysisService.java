@@ -3,7 +3,6 @@ package com.team.GroundTruth.services.hazard_analysis_service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -11,6 +10,7 @@ import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.stereotype.Service;
 import org.springframework.util.MimeType;
 import org.springframework.util.MimeTypeUtils;
@@ -51,22 +51,31 @@ public class HazardAnalysisService {
     /**
      * Analyze a report image and return parsed hazards.
      *
-     * @param imageUrl image URL
+     * @param imageBytes image bytes
+     * @param imageContentType image MIME type
      * @return parsed hazard analysis result
      */
-    public HazardAnalysisResult analyzeImage(String imageUrl) {
-        Objects.requireNonNull(imageUrl, "imageUrl");
+    public HazardAnalysisResult analyzeImage(byte[] imageBytes, String imageContentType) {
+        Objects.requireNonNull(imageBytes, "imageBytes");
+        if (imageBytes.length == 0) {
+            return new HazardAnalysisResult("Unknown", List.of());
+        }
 
         String response = chatClient.prompt()
                 .system(SYSTEM_PROMPT)
                 .user(userSpec -> userSpec
                         .text("Analyze the image and return the JSON output only.")
-                        .media(resolveMimeType(imageUrl), toUrl(imageUrl)))
+                        .media(resolveMimeType(imageContentType), new ByteArrayResource(imageBytes) {
+                            @Override
+                            public String getFilename() {
+                                return "hazard-image";
+                            }
+                        }))
                 .call()
                 .content();
 
         if (response == null || response.isBlank()) {
-            LOGGER.warn("Gemini response was empty for image {}", imageUrl);
+            LOGGER.warn("Gemini response was empty for image bytes");
             return new HazardAnalysisResult("Unknown", List.of());
         }
 
@@ -97,15 +106,15 @@ public class HazardAnalysisService {
         }
     }
 
-    private MimeType resolveMimeType(String imageUrl) {
-        String lower = imageUrl.toLowerCase();
-        if (lower.endsWith(".png")) {
-            return MimeTypeUtils.IMAGE_PNG;
+    private MimeType resolveMimeType(String imageContentType) {
+        if (imageContentType == null || imageContentType.isBlank()) {
+            return MimeTypeUtils.IMAGE_JPEG;
         }
-        if (lower.endsWith(".webp")) {
-            return MimeTypeUtils.parseMimeType("image/webp");
+        try {
+            return MimeTypeUtils.parseMimeType(imageContentType);
+        } catch (IllegalArgumentException ex) {
+            return MimeTypeUtils.IMAGE_JPEG;
         }
-        return MimeTypeUtils.IMAGE_JPEG;
     }
 
     private String cleanJson(String response) {
@@ -121,11 +130,4 @@ public class HazardAnalysisService {
         return trimmed;
     }
 
-    private URL toUrl(String imageUrl) {
-        try {
-            return new java.net.URI(imageUrl).toURL();
-        } catch (Exception ex) {
-            throw new IllegalArgumentException("Invalid image URL: " + imageUrl, ex);
-        }
-    }
 }

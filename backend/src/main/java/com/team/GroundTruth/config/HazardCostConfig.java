@@ -93,8 +93,25 @@ public class HazardCostConfig {
 	 * @return the final multiplier
 	 */
 	public double computeMultiplier(HazardType hazardType, double severity) {
+		return computeMultiplier(hazardType, severity, false);
+	}
+
+	/**
+	 * Computes the final cost multiplier for a hazard, with optional deep-pothole adjustment.
+	 * For POTHOLE, when hasDeepPothole is true (inference API found depth &gt; 5 cm), multiplies by 1.5.
+	 *
+	 * @param hazardType the hazard type
+	 * @param severity the severity score (0-100)
+	 * @param hasDeepPothole true if inference API reported any pothole deeper than 5 cm
+	 * @return the final multiplier
+	 */
+	public double computeMultiplier(HazardType hazardType, double severity, boolean hasDeepPothole) {
 		double baseMultiplier = getMultiplier(hazardType);
 		double severityFactor = 1.0 + (Math.min(100, Math.max(0, severity)) / 100.0);
-		return baseMultiplier * severityFactor;
+		double multiplier = baseMultiplier * severityFactor;
+		if (hazardType == HazardType.POTHOLE && hasDeepPothole) {
+			multiplier *= 1.5;
+		}
+		return multiplier;
 	}
 }
