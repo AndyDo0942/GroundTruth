@@ -1,4 +1,4 @@
-# GroundTruth
+# SafeStep
 
 A comprehensive walking route safety and accessibility platform that uses machine learning to detect and analyze road hazards, providing intelligent routing based on safety and accessibility needs.
 
